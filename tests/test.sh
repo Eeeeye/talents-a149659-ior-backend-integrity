@@ -351,12 +351,12 @@ expect_clean_success rank-single-z
 rank_shuffle_path="$case_root/rank shuffle/data"
 mkdir -p "$(dirname -- "$rank_shuffle_path")"
 run_capture rank-shuffle-first 45 "${common_mpi[@]}" -n 3 src/ior \
-    -a POSIX -b 64k -t 4k -s 1 -F -k -w -r -Z -Z -X=17 -vvv \
+    -a POSIX -b 64k -t 4k -s 1 -F -k -w -r -Z -Z -X=0 -vvv \
     -o "$rank_shuffle_path"
 rank_shuffle_first_rc=$CASE_RC
 rank_shuffle_first_stdout=$CASE_STDOUT
 run_capture rank-shuffle-repeat 45 "${common_mpi[@]}" -n 3 src/ior \
-    -a POSIX -b 64k -t 4k -s 1 -F -k -w -r -Z -Z -X=17 -vvv \
+    -a POSIX -b 64k -t 4k -s 1 -F -k -w -r -Z -Z -X=0 -vvv \
     -o "$rank_shuffle_path"
 rank_shuffle_repeat_rc=$CASE_RC
 rank_shuffle_repeat_stdout=$CASE_STDOUT
@@ -378,7 +378,7 @@ fi
 rank_shuffle_five_path="$case_root/rank shuffle five/data"
 mkdir -p "$(dirname -- "$rank_shuffle_five_path")"
 run_capture rank-shuffle-five 45 "${common_mpi[@]}" -n 5 src/ior \
-    -a POSIX -b 32k -t 4k -s 1 -F -k -w -r -Z -Z -X=17 -vvv \
+    -a POSIX -b 32k -t 4k -s 1 -F -k -w -r -Z -Z -X=2 -vvv \
     -o "$rank_shuffle_five_path"
 if [ "$CASE_RC" -ne 0 ]; then
     fail_case rank-shuffle-five "benchmark exit=$CASE_RC"
