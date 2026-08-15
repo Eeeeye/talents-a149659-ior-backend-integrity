@@ -5,9 +5,10 @@ use JSON::PP qw(decode_json);
 use Scalar::Util qw(looks_like_number);
 
 my ($path, $expected_api, $expected_tasks, $expected_transfer,
-    $expected_block, $expected_fpp) = @ARGV;
-die "usage: validate_json.pl FILE API TASKS TRANSFER BLOCK FPP\n"
-    unless defined $expected_fpp;
+    $expected_block, $expected_fpp, $expected_segments,
+    $expected_path) = @ARGV;
+die "usage: validate_json.pl FILE API TASKS TRANSFER BLOCK FPP SEGMENTS [PATH]\n"
+    unless defined $expected_segments;
 
 open my $handle, '<:raw', $path or die "cannot open $path: $!\n";
 local $/;
@@ -34,6 +35,11 @@ for my $key ('Version', 'Began', 'Finished', 'Command line') {
         unless !ref($document->{$key}) && length($document->{$key}) > 0;
 }
 
+if (defined $expected_path) {
+    die "Command line did not preserve the requested path\n"
+        if index($document->{'Command line'}, $expected_path) < 0;
+}
+
 my $saw_write = 0;
 my $saw_read = 0;
 for my $test (@{$document->{tests}}) {
@@ -47,7 +53,7 @@ for my $test (@{$document->{tests}}) {
         ['transferSize', $expected_transfer],
         ['blockSize', $expected_block],
         ['filePerProc', $expected_fpp],
-        ['segmentCount', 2],
+        ['segmentCount', $expected_segments],
     ) {
         my ($key, $expected) = @$check;
         my $actual = $test->{Parameters}->{$key};
@@ -91,7 +97,7 @@ for my $summary (@{$document->{summary}}) {
         ['transferSize', $expected_transfer],
         ['blockSize', $expected_block],
         ['filePerProc', $expected_fpp],
-        ['segmentCount', 2],
+        ['segmentCount', $expected_segments],
     ) {
         my ($key, $expected) = @$check;
         my $actual = $summary->{$key};

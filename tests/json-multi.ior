@@ -1,0 +1,20 @@
+IOR START
+api=POSIX
+testFile=/tmp/ior-json-batch-posix
+writeFile=1
+readFile=1
+filePerProc=1
+keepFile=0
+segmentCount=1
+blockSize=64k
+transferSize=8k
+setTimeStampSignature=271828
+RUN
+api=MPIIO
+testFile=/tmp/ior-json-batch-mpiio
+blockSize=96k
+transferSize=16k
+segmentCount=2
+setTimeStampSignature=271829
+RUN
+IOR STOP

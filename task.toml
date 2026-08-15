@@ -2,7 +2,7 @@ schema_version = "1.1"
 
 [task]
 name = "hpc/ior-backend-integrity"
-description = "Repair cross-backend data-integrity and machine-readable-output failures in the IOR HPC I/O benchmark."
+description = "Repair cross-backend data integrity, AIO boundary handling, seeded rank shuffling, and machine-readable output in the IOR HPC benchmark."
 authors = []
 keywords = ["hpc", "mpi-io", "linux-aio", "parallel-filesystem", "ior"]
 
@@ -15,7 +15,7 @@ tags = ["hpc", "c", "mpi", "async-io", "diagnosis", "reliability"]
 timeout_sec = 900.0
 
 [agent]
-timeout_sec = 1800.0
+timeout_sec = 3600.0
 
 [environment]
 build_timeout_sec = 900.0

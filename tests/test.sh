@@ -95,6 +95,21 @@ expect_rejected()
     fi
 }
 
+expect_aio_fault_failure()
+{
+    local name=$1
+    local diagnostic=$2
+    if [ "$CASE_RC" -eq 0 ]; then
+        fail_case "$name" "faulted completion was accepted"
+    elif [ "$CASE_RC" -eq 124 ] || [ "$CASE_RC" -eq 137 ]; then
+        fail_case "$name" "faulted completion caused a timeout"
+    elif ! grep -Eiq "$diagnostic" "$CASE_STDOUT" "$CASE_STDERR"; then
+        fail_case "$name" "explicit AIO completion diagnostic is missing"
+    else
+        pass_case "$name" "rejected with exit=$CASE_RC"
+    fi
+}
+
 finish()
 {
     if [ "$failures" -eq 0 ]; then
@@ -128,6 +143,16 @@ if [ "$elf_magic" != "7f454c46" ]; then
     finish
 fi
 pass_case build "ELF binary produced"
+
+aio_fault_shim="$case_root/libaio-faults.so"
+if ! cc -shared -fPIC -O2 -Wall -Wextra \
+    -o "$aio_fault_shim" /tests/aio_fault_shim.c -ldl \
+    >"$case_root/aio-shim-build.stdout" \
+    2>"$case_root/aio-shim-build.stderr"; then
+    fail_case aio-fault-shim-build "verifier fault injector did not compile"
+    finish
+fi
+pass_case aio-fault-shim-build "verifier-only injector compiled"
 
 if grep -R -n -E '/tests(/|\b)|/logs/verifier|reward\.txt' \
     --include='*.c' --include='*.h' --include='*.sh' src scripts/build.sh \
@@ -176,6 +201,49 @@ run_capture aio-granularity-1 75 "${common_mpi[@]}" -n 2 src/ior \
     --aio.max-pending=8 --aio.granularity=1 -o "$aio_four_path"
 expect_clean_success aio-granularity-1
 
+aio_transient_path="$case_root/aio transient boundaries/data"
+mkdir -p "$(dirname -- "$aio_transient_path")"
+run_capture aio-transient-boundaries 60 env \
+    LD_PRELOAD="$aio_fault_shim" \
+    IOR_AIO_FAULT_MODE=transient-boundaries \
+    "${common_mpi[@]}" -n 1 src/ior \
+    -a AIO -b 512k -t 4k -s 1 -F -k -w -W -r -R -G 161803 \
+    --aio.max-pending=16 --aio.granularity=8 -o "$aio_transient_path"
+expect_clean_success aio-transient-boundaries
+
+aio_short_path="$case_root/aio short completion/data"
+mkdir -p "$(dirname -- "$aio_short_path")"
+run_capture aio-short-completion 30 env \
+    LD_PRELOAD="$aio_fault_shim" \
+    IOR_AIO_FAULT_MODE=short-completion \
+    "${common_mpi[@]}" -n 1 src/ior \
+    -a AIO -b 128k -t 4k -s 1 -F -k -w -G 141421 \
+    --aio.max-pending=8 --aio.granularity=4 -o "$aio_short_path"
+expect_aio_fault_failure aio-short-completion \
+    'AIO, short completion|AIO short verification read'
+
+aio_negative_path="$case_root/aio negative completion/data"
+mkdir -p "$(dirname -- "$aio_negative_path")"
+run_capture aio-negative-completion 30 env \
+    LD_PRELOAD="$aio_fault_shim" \
+    IOR_AIO_FAULT_MODE=negative-completion \
+    "${common_mpi[@]}" -n 1 src/ior \
+    -a AIO -b 128k -t 4k -s 1 -F -k -w -G 151657 \
+    --aio.max-pending=8 --aio.granularity=4 -o "$aio_negative_path"
+expect_aio_fault_failure aio-negative-completion \
+    'AIO, error in io_event result|AIO error:'
+
+aio_secondary_path="$case_root/aio secondary error/data"
+mkdir -p "$(dirname -- "$aio_secondary_path")"
+run_capture aio-secondary-error 30 env \
+    LD_PRELOAD="$aio_fault_shim" \
+    IOR_AIO_FAULT_MODE=secondary-error \
+    "${common_mpi[@]}" -n 1 src/ior \
+    -a AIO -b 128k -t 4k -s 1 -F -k -w -G 173205 \
+    --aio.max-pending=8 --aio.granularity=4 -o "$aio_secondary_path"
+expect_aio_fault_failure aio-secondary-error \
+    'AIO, secondary completion error|AIO secondary error'
+
 run_capture aio-invalid-pending 20 "${common_mpi[@]}" -n 1 src/ior \
     -a AIO -b 64k -t 4k -s 1 -F -w -r \
     --aio.max-pending=7 --aio.granularity=1 \
@@ -204,13 +272,39 @@ for specification in 'POSIX:1' 'MPIIO:2' 'AIO:3'; do
     if [ "$CASE_RC" -ne 0 ]; then
         fail_case "json-$lower_api" "benchmark exit=$CASE_RC"
     elif ! perl /tests/validate_json.pl "$CASE_STDOUT" "$api" "$ranks" \
-        8192 163840 1 \
+        8192 163840 1 2 \
         >"$case_root/json-$lower_api.validate" 2>&1; then
         fail_case "json-$lower_api" "stdout is not a complete semantic JSON summary"
     else
         pass_case "json-$lower_api"
     fi
 done
+
+json_escaped_path="$case_root/json \"quoted\" \\ backslash"$'\t'"tab"$'\n'"newline"$'\r'"return"$'\b'"backspace"$'\f'"formfeed/data"
+mkdir -p "$(dirname -- "$json_escaped_path")"
+run_capture json-escaped-path 60 "${common_mpi[@]}" -n 2 src/ior \
+    -a POSIX -b 96k -t 12k -s 3 -F -k -w -r -v -G 223606 \
+    -o "$json_escaped_path" -O summaryFormat=JSON
+if [ "$CASE_RC" -ne 0 ]; then
+    fail_case json-escaped-path "benchmark exit=$CASE_RC"
+elif ! perl /tests/validate_json.pl "$CASE_STDOUT" POSIX 2 \
+    12288 98304 1 3 "$json_escaped_path" \
+    >"$case_root/json-escaped-path.validate" 2>&1; then
+    fail_case json-escaped-path "JSON strings did not round-trip the path"
+else
+    pass_case json-escaped-path
+fi
+
+run_capture json-multiple-runs 75 "${common_mpi[@]}" -n 2 src/ior \
+    -f /tests/json-multi.ior -O summaryFormat=JSON
+if [ "$CASE_RC" -ne 0 ]; then
+    fail_case json-multiple-runs "benchmark exit=$CASE_RC"
+elif ! perl /tests/validate_json_multi.pl "$CASE_STDOUT" \
+    >"$case_root/json-multiple-runs.validate" 2>&1; then
+    fail_case json-multiple-runs "multi-RUN JSON document is incomplete"
+else
+    pass_case json-multiple-runs
+fi
 
 mpiio_explicit_path="$case_root/mpiio explicit/data"
 mkdir -p "$(dirname -- "$mpiio_explicit_path")"
@@ -246,5 +340,53 @@ run_capture mpiio-file-per-process 60 "${common_mpi[@]}" -n 3 src/ior \
     -a MPIIO -b 72k -t 8k -s 2 -F -k -w -W -r -R -G 192840 \
     -o "$mpiio_fpp_path"
 expect_mpiio_success mpiio-file-per-process
+
+rank_single_path="$case_root/rank single z/data"
+mkdir -p "$(dirname -- "$rank_single_path")"
+run_capture rank-single-z 45 "${common_mpi[@]}" -n 3 src/ior \
+    -a POSIX -b 64k -t 4k -s 1 -F -k -w -W -r -R -Z -X=17 -vv \
+    -G 244949 -o "$rank_single_path"
+expect_clean_success rank-single-z
+
+rank_shuffle_path="$case_root/rank shuffle/data"
+mkdir -p "$(dirname -- "$rank_shuffle_path")"
+run_capture rank-shuffle-first 45 "${common_mpi[@]}" -n 3 src/ior \
+    -a POSIX -b 64k -t 4k -s 1 -F -k -w -r -Z -Z -X=17 -vvv \
+    -o "$rank_shuffle_path"
+rank_shuffle_first_rc=$CASE_RC
+rank_shuffle_first_stdout=$CASE_STDOUT
+run_capture rank-shuffle-repeat 45 "${common_mpi[@]}" -n 3 src/ior \
+    -a POSIX -b 64k -t 4k -s 1 -F -k -w -r -Z -Z -X=17 -vvv \
+    -o "$rank_shuffle_path"
+rank_shuffle_repeat_rc=$CASE_RC
+rank_shuffle_repeat_stdout=$CASE_STDOUT
+if [ "$rank_shuffle_first_rc" -ne 0 ] || [ "$rank_shuffle_repeat_rc" -ne 0 ]; then
+    fail_case rank-shuffle-permutation \
+        "benchmark exits=$rank_shuffle_first_rc,$rank_shuffle_repeat_rc"
+elif ! perl /tests/validate_rank_shuffle.pl "$rank_shuffle_first_stdout" 3 \
+    >"$case_root/rank-shuffle-first.map" 2>"$case_root/rank-shuffle-first.validate" \
+    || ! perl /tests/validate_rank_shuffle.pl "$rank_shuffle_repeat_stdout" 3 \
+    >"$case_root/rank-shuffle-repeat.map" 2>"$case_root/rank-shuffle-repeat.validate"; then
+    fail_case rank-shuffle-permutation "read targets are not a one-to-one permutation"
+elif ! cmp -s "$case_root/rank-shuffle-first.map" \
+    "$case_root/rank-shuffle-repeat.map"; then
+    fail_case rank-shuffle-permutation "fixed seed did not reproduce the mapping"
+else
+    pass_case rank-shuffle-permutation
+fi
+
+rank_shuffle_five_path="$case_root/rank shuffle five/data"
+mkdir -p "$(dirname -- "$rank_shuffle_five_path")"
+run_capture rank-shuffle-five 45 "${common_mpi[@]}" -n 5 src/ior \
+    -a POSIX -b 32k -t 4k -s 1 -F -k -w -r -Z -Z -X=17 -vvv \
+    -o "$rank_shuffle_five_path"
+if [ "$CASE_RC" -ne 0 ]; then
+    fail_case rank-shuffle-five "benchmark exit=$CASE_RC"
+elif ! perl /tests/validate_rank_shuffle.pl "$CASE_STDOUT" 5 \
+    >"$case_root/rank-shuffle-five.map" 2>"$case_root/rank-shuffle-five.validate"; then
+    fail_case rank-shuffle-five "five-rank targets are not a one-to-one permutation"
+else
+    pass_case rank-shuffle-five
+fi
 
 finish
