@@ -14,7 +14,18 @@ fi
 export MINIO_ACCESS_KEY=accesskey
 export MINIO_SECRET_KEY=secretkey
 
-$ROOT/minio --quiet server /dev/shm &
+MINIO_PID=""
+cleanup_minio() {
+  local pid="${MINIO_PID:-}"
+  [[ -n "$pid" ]] || return 0
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  MINIO_PID=""
+}
+trap cleanup_minio EXIT INT TERM
+
+timeout --signal=TERM --kill-after=5s 300s "$ROOT/minio" --quiet server /dev/shm &
+MINIO_PID=$!
 
 export IOR_EXTRA="-o test"
 export MDTEST_EXTRA="-d test"
@@ -29,5 +40,5 @@ IOR 1 -a S3-libs3 --S3.host=localhost:9000  --S3.secret-key=secretkey --S3.acces
 MDTEST 1 -a S3-libs3 -L --S3.host=localhost:9000  --S3.secret-key=secretkey --S3.access-key=accesskey --S3.bucket-per-file -n 5
 MDTEST 1 -a S3-libs3 --S3.host=localhost:9000  --S3.secret-key=secretkey --S3.access-key=accesskey --S3.bucket-per-file -n 10 -w 1024 -e 1024
 
-
-kill -9 %1
+cleanup_minio
+trap - EXIT INT TERM
