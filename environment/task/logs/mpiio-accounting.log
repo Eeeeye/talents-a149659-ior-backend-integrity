@@ -1,0 +1,28 @@
+IOR-4.1.0+dev: MPI Coordinated Test of Parallel I/O
+Command line        : src/ior -a MPIIO -b 96k -t 32k -s 2 -k -w -W -r -R -G 72821 -o /out/mpiio data
+Machine             : Linux [redacted-local-container]
+
+Options:
+api                 : MPIIO
+apiVersion          : (3.1)
+access              : single-shared-file
+type                : independent
+segments            : 2
+tasks               : 2
+xfersize            : 32768 bytes
+blocksize           : 98304 bytes
+aggregate filesize  : 393216 bytes
+
+WARNING: task 1, partial write(), 65536 of 32768 bytes at offset 98304, xferRetries: 0
+WARNING: task 0, partial write(), 65536 of 32768 bytes at offset 0, xferRetries: 0
+...
+WARNING: task 0, partial write(), 65536 of 32768 bytes at offset 0, xferRetries: 9999
+WARNING: task 0, partial write(), 65536 of 32768 bytes at offset 0, xferRetries: 10000
+WARNING: task 0, partial write(), 65536 of 32768 bytes at offset 0, xferRetries: 10001
+WARNING: too many retries -- aborting
+ERROR: cannot write to file, (ior.c:1662)
+
+MPI_ABORT was invoked on a rank in communicator MPI_COMM_WORLD
+with errorcode -1.
+
+Process exit status: 255

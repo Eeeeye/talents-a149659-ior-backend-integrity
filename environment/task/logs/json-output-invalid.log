@@ -1,0 +1,31 @@
+{
+  "Version": "4.1.0+dev",
+  "Command line": "src/ior -a AIO -b 256k -t 4k -s 2 -F -k -w -r -v --aio.max-pending=32 --aio.granularity=8 -o /out/json data -O summaryFormat=JSON",
+  "Machine": "Linux [redacted-local-container]",
+  "tests": [
+32
+    {
+      "TestID": 0,
+      "Parameters": {
+        "api": "AIO",
+        "tasksPerNode": 2,
+        "transferSize": 4096,
+        "blockSize": 262144
+      }
+Participating tasks : 2
+,
+      "Options": {
+        "api": "AIO",
+32
+        "GPUDirect": "0"
+      },
+      "Results": [
+Commencing write performance test: [timestamp redacted]
+        {
+          "access": "write"
+        }
+
+Parser result:
+  unexpected character before first test object; document is not valid JSON
+
+Process exit status: 0

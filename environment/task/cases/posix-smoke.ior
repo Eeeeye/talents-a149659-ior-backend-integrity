@@ -1,0 +1,15 @@
+IOR START
+api=POSIX
+testFile=/tmp/ior-posix-smoke
+writeFile=1
+readFile=1
+checkWrite=1
+checkRead=1
+filePerProc=1
+keepFile=1
+segmentCount=2
+blockSize=192k
+transferSize=24k
+setTimeStampSignature=314159
+RUN
+IOR STOP

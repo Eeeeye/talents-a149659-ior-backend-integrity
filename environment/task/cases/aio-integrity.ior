@@ -1,0 +1,17 @@
+IOR START
+api=AIO
+testFile=/tmp/ior-aio-integrity
+writeFile=1
+readFile=1
+checkWrite=1
+checkRead=1
+filePerProc=1
+keepFile=1
+segmentCount=2
+blockSize=4m
+transferSize=4k
+setTimeStampSignature=424242
+--aio.max-pending=128
+--aio.granularity=16
+RUN
+IOR STOP

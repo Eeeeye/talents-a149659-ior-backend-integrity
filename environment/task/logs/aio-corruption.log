@@ -1,0 +1,22 @@
+IOR-4.1.0+dev: MPI Coordinated Test of Parallel I/O
+Command line        : src/ior -a AIO -b 4m -t 4k -s 2 -F -k -w -W -r -R -G 424242 --aio.max-pending=128 --aio.granularity=16 -o /out/aio data
+Machine             : Linux [redacted-local-container]
+128
+TestID              : 0
+128
+
+Options:
+api                 : AIO
+access              : file-per-process
+segments            : 2
+tasks               : 2
+xfersize            : 4096 bytes
+blocksize           : 4 MiB
+aggregate filesize  : 16 MiB
+
+WARNING: Incorrect data on write (2048 errors found).
+Used Time Stamp 424242 (0x67932) for Data Signature
+WARNING: Incorrect data on read (2048 errors found).
+Used Time Stamp 424242 (0x67932) for Data Signature
+
+Process exit status: 0
