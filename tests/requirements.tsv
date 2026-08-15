@@ -2,6 +2,6 @@ requirement	verifier case
 offline build and real IOR binary	build, build-artifact
 POSIX behavior, human summary, and repeated path	posix-first, posix-repeat
 AIO concurrent buffer integrity and documented limits	aio-concurrent-128, aio-concurrent-17, aio-concurrent-8, aio-granularity-1, aio-invalid-pending, aio-invalid-granularity
-JSON document for every backend	json-posix, json-mpiio, json-aio
+JSON framing, metadata, parameter, result, and summary schema for every backend	json-posix, json-mpiio, json-aio
 MPI-IO byte accounting	mpiio-explicit, mpiio-explicit-64k, mpiio-file-view, mpiio-collective, mpiio-file-per-process
 verifier trust-zone separation	trust-zone

@@ -88,9 +88,31 @@ multi-rank execution and `-v`.
 
 - No rank may add a diagnostic number, banner, participation line, or trailing
   bracket outside the document.
-- The document must retain IOR's normal top-level metadata, test parameters,
-  and write/read result records. Producing an empty object or suppressing
-  benchmark results is not acceptable.
+- The top level must be an object containing non-empty string fields
+  `Version`, `Began`, `Finished`, and `Command line`, plus `tests` and
+  `summary` arrays. Additional normal IOR fields are allowed.
+- For one CLI test invocation, `tests` must contain exactly one object. Its
+  `Parameters` object must contain:
+  - `api`: a string equal to the selected backend name;
+  - `tasksPerNode`: a number equal to the launched local MPI task count;
+  - `transferSize` and `blockSize`: numbers in bytes equal to the selected
+    `-t` and `-b` values;
+  - `filePerProc`: the numeric `0` or `1` value matching whether `-F`
+    is disabled or enabled;
+  - `segmentCount`: a number equal to the selected `-s` value.
+- That test object's `Results` field must be an array. When both write and
+  read are requested, it must contain objects whose `access` strings are
+  `write` and `read`. Each such object must contain non-negative numeric
+  `bwMiB`, `blockKiB`, `xferKiB`, `iops`, and `totalTime` fields;
+  `blockKiB` and `xferKiB` must equal the selected byte sizes divided by
+  1024.
+- `summary` must be a non-empty array. When both write and read are requested,
+  it must contain at least one object for each operation. Every such object
+  must contain `operation` (`write` or `read`), `API` (the selected
+  backend string), and numeric `numTasks`, `transferSize`, `blockSize`,
+  `filePerProc`, and `segmentCount` values matching the invocation.
+- Producing an empty object, omitting the required metadata or records, or
+  reporting parameters that do not match the invocation is not acceptable.
 - Human-readable output without JSON mode must remain available.
 
 ## Failure safety and limits
