@@ -193,7 +193,7 @@ index 930be24..a4d2314 100644
 +    if (res != 1){
 +      ERRF("AIO getevents failed: %s", strerror(res < 0 ? -res : EIO));
 +    }
-+    if ((long)event.res < 0) ERRF("AIO error: %s", strerror(-(long)event.res));
++    if ((long)event.res < 0) ERRF("AIO primary completion error: %s", strerror(-(long)event.res));
 +    if ((long)event.res2 != 0) ERRF("AIO secondary error: %s", strerror((int)event.res2));
 +    if (event.res != (uint64_t)length){
 +      ERRF("AIO short verification read: %lld of %lld bytes",
