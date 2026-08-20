@@ -95,16 +95,63 @@ expect_rejected()
     fi
 }
 
+has_aio_completion_diagnostic()
+{
+    local fault_kind=$1
+    shift
+    awk -v fault_kind="$fault_kind" '
+        {
+            line = tolower($0)
+
+            # IOR may echo argv and selected paths.  Those are inputs, not
+            # diagnostics from the implementation under test.
+            if (line ~ /^[[:space:]]*(command line|path|test file|options)[[:space:]:]/)
+                next
+            if (line !~ /(^|[^[:alnum:]_])(aio|libaio)([^[:alnum:]_]|$)/)
+                next
+
+            numeric_byte_relation = \
+                line ~ /[[:digit:]]+[[:space:]]+(of|\/)[[:space:]]*[[:digit:]]+[[:space:]]*bytes?/
+            explicit_negative = \
+                line ~ /(^|[^[:digit:]])-[[:digit:]]+([^[:digit:]]|$)/
+            explicit_nonzero_res2 = \
+                line ~ /(secondary|res2)[^[:digit:]-]*-?[1-9][[:digit:]]*/
+
+            if (fault_kind == "short-completion" &&
+                line ~ /(complet|result|bytes?)/ &&
+                (line ~ /(short|partial|incomplete|expected|actual|requested)/ ||
+                 numeric_byte_relation))
+                found = 1
+            else if (fault_kind == "negative-completion" &&
+                line ~ /(primary|complet|event[ ._-]*res|result)/ &&
+                (line ~ /(negative|error|fail|eio|input\/output)/ ||
+                 explicit_negative))
+                found = 1
+            else if (fault_kind == "secondary-error" &&
+                line ~ /(secondary|res2)/ &&
+                (line ~ /(error|fail|non[- ]?zero|eio|input\/output)/ ||
+                 explicit_nonzero_res2))
+                found = 1
+        }
+        END { exit found ? 0 : 1 }
+    ' "$@"
+}
+
 expect_aio_fault_failure()
 {
     local name=$1
-    local diagnostic=$2
+    local fault_kind=$2
+    local fault_record=$3
     if [ "$CASE_RC" -eq 0 ]; then
         fail_case "$name" "faulted completion was accepted"
     elif [ "$CASE_RC" -eq 124 ] || [ "$CASE_RC" -eq 137 ]; then
         fail_case "$name" "faulted completion caused a timeout"
-    elif ! grep -Eiq "$diagnostic" "$CASE_STDOUT" "$CASE_STDERR"; then
-        fail_case "$name" "explicit AIO completion diagnostic is missing"
+    elif [ ! -f "$fault_record" ] \
+        || ! grep -Fqx "$fault_kind" "$fault_record"; then
+        fail_case "$name" "verifier did not observe the requested injected fault"
+    elif ! has_aio_completion_diagnostic "$fault_kind" \
+        "$CASE_STDOUT" "$CASE_STDERR"; then
+        fail_case "$name" "semantic AIO completion diagnostic is missing"
     else
         pass_case "$name" "rejected with exit=$CASE_RC"
     fi
@@ -153,6 +200,40 @@ if ! cc -shared -fPIC -O2 -Wall -Wextra \
     finish
 fi
 pass_case aio-fault-shim-build "verifier-only injector compiled"
+
+diagnostic_short_variant="$case_root/aio-diagnostic-short.log"
+diagnostic_negative_variant="$case_root/aio-diagnostic-negative.log"
+diagnostic_secondary_variant="$case_root/aio-diagnostic-secondary.log"
+printf '%s\n' 'libaio operation completed 4095 of 4096 bytes' \
+    >"$diagnostic_short_variant"
+printf '%s\n' 'libaio completion primary result=-5 (input/output failure)' \
+    >"$diagnostic_negative_variant"
+printf '%s\n' 'AIO completion res2=5' \
+    >"$diagnostic_secondary_variant"
+if has_aio_completion_diagnostic short-completion \
+        "$diagnostic_short_variant" \
+    && has_aio_completion_diagnostic negative-completion \
+        "$diagnostic_negative_variant" \
+    && has_aio_completion_diagnostic secondary-error \
+        "$diagnostic_secondary_variant"; then
+    pass_case aio-diagnostic-semantics \
+        "solution-independent diagnostic wording is accepted"
+else
+    fail_case aio-diagnostic-semantics \
+        "a semantic diagnostic variant was rejected"
+fi
+
+diagnostic_decoy="$case_root/aio-diagnostic-decoy.log"
+printf '%s\n' \
+    'Command line used: src/ior -o /tmp/aio-res2-nonzero-failure/data' \
+    'Path: /tmp/aio-res2-nonzero-failure/data' >"$diagnostic_decoy"
+if has_aio_completion_diagnostic secondary-error "$diagnostic_decoy"; then
+    fail_case aio-diagnostic-isolation \
+        "an echoed command or path was accepted as a candidate diagnostic"
+else
+    pass_case aio-diagnostic-isolation \
+        "input echoes cannot satisfy the diagnostic requirement"
+fi
 
 if grep -R -n -E '/tests(/|\b)|/logs/verifier|reward\.txt' \
     --include='*.c' --include='*.h' --include='*.sh' src scripts/build.sh \
@@ -211,38 +292,44 @@ run_capture aio-transient-boundaries 60 env \
     --aio.max-pending=16 --aio.granularity=8 -o "$aio_transient_path"
 expect_clean_success aio-transient-boundaries
 
-aio_short_path="$case_root/aio short completion/data"
+aio_short_path="$case_root/fault-01/data"
+aio_short_record="$case_root/fault-01.record"
 mkdir -p "$(dirname -- "$aio_short_path")"
 run_capture aio-short-completion 30 env \
     LD_PRELOAD="$aio_fault_shim" \
     IOR_AIO_FAULT_MODE=short-completion \
+    IOR_AIO_FAULT_RECORD="$aio_short_record" \
     "${common_mpi[@]}" -n 1 src/ior \
     -a AIO -b 128k -t 4k -s 1 -F -k -w -G 141421 \
     --aio.max-pending=8 --aio.granularity=4 -o "$aio_short_path"
 expect_aio_fault_failure aio-short-completion \
-    'AIO, short completion|AIO short verification read'
+    short-completion "$aio_short_record"
 
-aio_negative_path="$case_root/aio negative completion/data"
+aio_negative_path="$case_root/fault-02/data"
+aio_negative_record="$case_root/fault-02.record"
 mkdir -p "$(dirname -- "$aio_negative_path")"
 run_capture aio-negative-completion 30 env \
     LD_PRELOAD="$aio_fault_shim" \
     IOR_AIO_FAULT_MODE=negative-completion \
+    IOR_AIO_FAULT_RECORD="$aio_negative_record" \
     "${common_mpi[@]}" -n 1 src/ior \
     -a AIO -b 128k -t 4k -s 1 -F -k -w -G 151657 \
     --aio.max-pending=8 --aio.granularity=4 -o "$aio_negative_path"
 expect_aio_fault_failure aio-negative-completion \
-    'AIO, error in io_event result|AIO error:'
+    negative-completion "$aio_negative_record"
 
-aio_secondary_path="$case_root/aio secondary error/data"
+aio_secondary_path="$case_root/fault-03/data"
+aio_secondary_record="$case_root/fault-03.record"
 mkdir -p "$(dirname -- "$aio_secondary_path")"
 run_capture aio-secondary-error 30 env \
     LD_PRELOAD="$aio_fault_shim" \
     IOR_AIO_FAULT_MODE=secondary-error \
+    IOR_AIO_FAULT_RECORD="$aio_secondary_record" \
     "${common_mpi[@]}" -n 1 src/ior \
     -a AIO -b 128k -t 4k -s 1 -F -k -w -G 173205 \
     --aio.max-pending=8 --aio.granularity=4 -o "$aio_secondary_path"
 expect_aio_fault_failure aio-secondary-error \
-    'AIO, secondary completion error|AIO secondary error'
+    secondary-error "$aio_secondary_record"
 
 run_capture aio-invalid-pending 20 "${common_mpi[@]}" -n 1 src/ior \
     -a AIO -b 64k -t 4k -s 1 -F -w -r \

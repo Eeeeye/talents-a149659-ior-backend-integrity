@@ -2,10 +2,12 @@
 
 #include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <libaio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 typedef int (*io_submit_fn)(io_context_t, long, struct iocb **);
 typedef int (*io_getevents_fn)(io_context_t, long, long, struct io_event *,
@@ -17,6 +19,23 @@ static int submit_eintr_injected;
 static int submit_short_injected;
 static int getevents_eintr_injected;
 static int completion_fault_injected;
+
+static void record_fault(const char *kind)
+{
+    const char *path = getenv("IOR_AIO_FAULT_RECORD");
+    int descriptor;
+
+    if (path == NULL || path[0] == '\0')
+        return;
+
+    descriptor = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+    if (descriptor < 0)
+        return;
+
+    (void)write(descriptor, kind, strlen(kind));
+    (void)write(descriptor, "\n", 1);
+    (void)close(descriptor);
+}
 
 static int mode_is(const char *expected)
 {
@@ -102,15 +121,18 @@ int io_getevents(io_context_t context, long minimum, long maximum,
             if ((long)events[index].res > 0) {
                 events[index].res--;
                 completion_fault_injected = 1;
+                record_fault("short-completion");
                 break;
             }
         }
     } else if (mode_is("negative-completion")) {
         events[0].res = -EIO;
         completion_fault_injected = 1;
+        record_fault("negative-completion");
     } else if (mode_is("secondary-error")) {
         events[0].res2 = EIO;
         completion_fault_injected = 1;
+        record_fault("secondary-error");
     }
 
     return result;
