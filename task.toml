@@ -12,7 +12,7 @@ category = "systems"
 tags = ["hpc", "c", "mpi", "async-io", "diagnosis", "reliability"]
 
 [verifier]
-timeout_sec = 900.0
+timeout_sec = 600.0
 
 [agent]
 timeout_sec = 3600.0

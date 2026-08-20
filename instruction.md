@@ -79,7 +79,11 @@ pending limit:
 - a completion is successful only when its primary result equals that
   request's byte count and its secondary result is zero. A short completion,
   negative completion, or nonzero secondary result must terminate the run
-  nonzero with an explicit AIO diagnostic rather than hang or silently pass;
+  nonzero with an explicit AIO diagnostic rather than hang or silently pass.
+  Wording and formatting are not prescribed, but at least one emitted
+  diagnostic line must identify AIO or libaio and distinguish the observed
+  fault class: incomplete byte count, negative primary result, or nonzero
+  secondary result (`res2`), respectively;
 - the existing validation of `aio.max-pending < 8` and
   `aio.granularity > aio.max-pending` must remain in force.
 
